@@ -85,7 +85,7 @@ discord_client.on('messageCreate', message => {
 
 		twitch_client.say(inputMsg[1], `Message rejected by bot administrator :(`);
 
-    } else if (inputMsg[0] == '!approve') {//the admin has approved a channel for using this bot
+    } else if (inputMsg[0] == '!approvechannel') {//the admin has approved a channel for using this bot
 		let approved_channel = inputMsg[1];
 
 		addInNewChannelToList(approved_channel, true);//doing it this way to avoid having to do a rewrite rn

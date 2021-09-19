@@ -11,8 +11,8 @@ class Post {
 	 * @param d the Discord client that will send the response to the admin to be reviewed and approved
      */
     constructor(c, d) {
-		this.client = c;
-		this.discordClient = d;
+		this.twitch_client = c;
+		this.discord_client = d;
 		this.frameArray = [];
     }
 
@@ -28,15 +28,15 @@ class Post {
      * @return            whether the prompt was able to be posted to the target room or not
      */
 	async generatePost(prompt_frame) {
-		let linesCount = prompt_frame.linesCount;
+		let lines_count = prompt_frame.linesCount;
 		let target = prompt_frame.channel;
 		let prompt = prompt_frame.prompt;
 
 		//check first if minimum posting requirements have been met (enough comments made to post)
-		console.log("Number of lines in prompt: " + linesCount);
+		console.log("Number of lines in prompt: " + lines_count);
 		//there weren't enough comments to generate a post
-		if (linesCount < 10) {
-			this.client.say(target, `Not enough comments yet :(`);
+		if (lines_count < 10) {
+			this.twitch_client.say(target, `Not enough comments yet :(`);
 		} else {
 
 			//the urls for GPT-3's engines; we will use the the content filter to keep compliance with OpenAI's TOS
@@ -136,14 +136,14 @@ class Post {
 				let responseMsg = `Generated response for ${target} is `;
 				let askMsg = "Pass this message through? (Y/N): ";
 
-				this.discordClient.channels.cache.get(process.env.SERVER_ID).send(responseMsg);
+				this.discord_client.channels.cache.get(process.env.SERVER_ID).send(responseMsg);
 				if (tested_output == "" || tested_output == "\n" || this.#seeIfNothingButNewlines(tested_output)) {
-					this.discordClient.channels.cache.get(process.env.SERVER_ID).send("Empty Response");
+					this.discord_client.channels.cache.get(process.env.SERVER_ID).send("Empty Response");
 				} else {
-					this.discordClient.channels.cache.get(process.env.SERVER_ID).send(tested_output);
+					this.discord_client.channels.cache.get(process.env.SERVER_ID).send(tested_output);
                 }
 				
-				this.discordClient.channels.cache.get(process.env.SERVER_ID).send(askMsg);
+				this.discord_client.channels.cache.get(process.env.SERVER_ID).send(askMsg);
 
 				//the object that will be used for sending out approved messages to the twich chat channel
 				let frame = {
@@ -155,7 +155,7 @@ class Post {
 				this.frameArray.push(frame);
 
 			} catch (err) {//in case of a screwup, post an error message to chat and print error
-				this.client.say(target, `Error in text generation`);
+				this.twitch_client.say(target, `Error in text generation`);
 				console.error(err);
 			}
 		}

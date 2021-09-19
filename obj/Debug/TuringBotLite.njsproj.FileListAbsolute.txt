@@ -1,0 +1,3 @@
+C:\Users\Tyler\source\repos\TuringBotLite\obj\Debug\TuringBotLite.njsproj.AssemblyReference.cache
+C:\Users\Tyler\source\repos\TuringBotLite\obj\Debug\TuringBotLite.njsproj.CoreCompileInputs.cache
+C:\Users\Tyler\source\repos\TuringBotLite\bin\Microsoft.NodejsTools.WebRole.dll

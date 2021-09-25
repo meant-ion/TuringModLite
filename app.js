@@ -113,8 +113,10 @@ function onMessageHandler(target, user, msg, self) {
 		if (cmdName == '!post' && (user.mod || ('#' + user.username) == target)) {//generate a post from the prompt
 
 			//check to see if the channel is approved or not. If so, allow a post to go through
+			//make sure that the prompt for the channel is cleared after response is generated as well
 			if (channel_list[findThisPrompt(target)].approved_channel) {
 				poster.generatePost(channel_list[findThisPrompt(target)]);
+				flush(target);
 			}
 
 		} else if (cmdName == '!adduser' && user.username == "pope_pontus") {//add in new channel to client

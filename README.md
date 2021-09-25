@@ -55,7 +55,6 @@ TODO:
 		* Need account creation service/authenticator (Firebase?)
 		* Change use of .json files over to a DB (SQL distro/MongoDB?)
 		* Need way of identifying if a channel is safe to use the bot on
-			- Watch chat culture myself and make the decision then? Gonna take a lot of time out of my day this way
 			- Maybe have a scraper get comments into file that can be searched for naughty words/emotes/whatever
 
   - Set up payment handling and all that fun stuff

@@ -39,6 +39,7 @@ class ChatScraper {
         };
 
         let total_bad_items = 0;
+        let bad_items_list = [];
 
         //loop through each token and see if we can include it in the final output
         for (let i = 0; i < total_words.length; ++i) {
@@ -77,25 +78,26 @@ class ChatScraper {
             //if the token has been proven to not fall into a bad area/level of toxicity, 
             //we add it to the output text and send that out for approval for the bot's administrator
             if (output_label == "2") {
+                bad_items_list.push(total_words[i]);
                 total_bad_items++;
             }
 
             testing_params.prompt = "<|endoftext|>" + total_words[i] + "\n--\nLabel:";
         }
 
-        let responseMsg = `Total suspect words discovered in chat is ${total_bad_items} `;
+        //messages we send out to the server for admin's review of the channel
+        let response_msg = `Total suspect words discovered in chat is ${total_bad_items} \n`;
+        let list_msg = `This is the list of words found that were suspect: \n`;
+        bad_items_list.forEach(word => {
+            list_msg += word + '\n';
+        });
         let askMsg = "Apply this channel to the bot? (Y/N): ";
 
-        this.discord_client.channels.cache.get(process.env.SERVER_ID).send(responseMsg);
-        if (tested_output == "" || tested_output == "\n" || this.#seeIfNothingButNewlines(tested_output)) {
-            this.discord_client.channels.cache.get(process.env.SERVER_ID).send("Empty Response");
-        } else {
-            this.discord_client.channels.cache.get(process.env.SERVER_ID).send(tested_output);
-        }
-        
+        //send out the stats gained from this scraping and send out query to apply bot to channel 
+        this.discord_client.channels.cache.get(process.env.SERVER_ID).send(response_msg);
+        this.discord_client.channels.cache.get(process.env.SERVER_ID).send(list_msg);
+        this.discord_client.channels.cache.get(process.env.SERVER_ID).send(bad_items_list);
         this.discord_client.channels.cache.get(process.env.SERVER_ID).send(askMsg);
-
-
     }
 
     //checks to see if there are nothing but newline characters in the text.

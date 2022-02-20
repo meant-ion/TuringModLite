@@ -65,43 +65,48 @@ twitch_client.on('connected', (addy, prt) => console.log(`* Connected to ${addy}
 let poster = new p(twitch_client, discord_client);
 let scraper = new s(discord_client);
 
+let channel_name = undefined;
+
 //when a message is sent out, we will take it and push it out to its channel
 discord_client.on('messageCreate', message => {
 	//take the message and split it up into separate words
 	const inputMsg = message.content.split(" ");
+	//the channel name will not have a '#' in front of it, so we need to add it to the front if we need to post something to
+	//the client's channel
+	if (inputMsg[0] == 'Generated') channel_name = inputMsg[3].substring(0, inputMsg[3].length - 2);
+	const target_channel = "#" + channel_name; 
 	let response = "";
 	let filledFrames = poster.getFrameArray();
 	if (inputMsg[0] == '!send') {//the message generated was accepted by admin
 
 		//search through the list of responses and channels to find the correct one and then post that out
-		if(filledFrames[inputMsg[1]] != undefined) {
-			response = filledFrames[inputMsg[1]].output;
-			channel_list[inputMsg[1]].current_bill += filledFrames[inputMsg[1]].curr_bill;
+		if(filledFrames[channel_name] != undefined) {
+			response = filledFrames[channel_name].output;
+			channel_list[channel_name].current_bill += filledFrames[channel_name].curr_bill;
 		}
-		const target_channel = "#" + inputMsg[1]; 
 
 		if (response != "") 
 			twitch_client.say(target_channel, `MrDestructoid ${response}`);
 		else
 			twitch_client.say(target_channel, `No response found for this channel`);
 
-		poster.removeResponseFrame(inputMsg[1]);
+		poster.removeResponseFrame(channel_name);
 
 		writeChannelsToFile(JSON.stringify(channel_list, null, 4), 1);
 		
 	} else if (inputMsg[0] == '!reject') {//the message generated was rejected by admin
 
-		twitch_client.say(inputMsg[1], `Message rejected by bot administrator :(`);
-		channel_list[inputMsg[1]].current_bill += filledFrames[inputMsg[1]].curr_bill;
-		poster.removeResponseFrame(inputMsg[1]);
+		twitch_client.say(target_channel, `Message rejected by bot administrator :(`);
+		channel_list[channel_name].current_bill += filledFrames[channel_name].curr_bill;
+		poster.removeResponseFrame(channel_name);
 		writeChannelsToFile(JSON.stringify(channel_list, null, 4), 1);
 
     } else if (inputMsg[0] == '!approvechannel') {//the admin has approved a channel for using this bot
-		let approved_channel = inputMsg[1];
+		let approved_channel = channel_name;
 
 		addInNewChannelToList(approved_channel, true);//doing it this way to avoid having to do a rewrite rn
 	} else if (inputMsg[0] == '!rejectchannel') {//admin is rejecting channel for using this bot due to chat behavior
-		removeChannelFromList(inputMsg[1]);
+		removeChannelFromList(channel_name);
 	}
 	
 });

@@ -144,8 +144,8 @@ export class Post {
 				testing_params.prompt = "<|endoftext|>" + token + "\n--\nLabel:";
 		 	}
 
-			const responseMsg = `Generated response for the channel is `;
-			const askMsg = "Pass this message through? (!send to send, anything else to reject): ";
+			const responseMsg = `Generated response for ${target}'s channel is `;
+			const askMsg = "Pass this message through? (!send to send, !reject to reject): ";
 
 			this.discord_client.channels.cache.get(server_id).send(responseMsg);
 			if (tested_output == "" || tested_output == "\n" || this.#seeIfNothingButNewlines(tested_output)) 

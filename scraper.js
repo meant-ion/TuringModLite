@@ -4,10 +4,11 @@
 //If high enough, automatic approval for the bot. If not, either automatic rejection (i.e. paying per attempt at a post rather than per successful
 //post) or admin will have to personally watch the stream and see what that culture is like
 
-require('dotenv').config({ path: './.env' });
-const got = require('got');
+import dotenv from 'dotenv';
+dotenv.config({ path: './.env'});
+import fetch from 'node-fetch';
 
-class ChatScraper {
+export class ChatScraper {
 
     //@params d_c Discord client
     constructor(d_c) {
@@ -44,7 +45,7 @@ class ChatScraper {
         //loop through each token and see if we can include it in the final output
         for (let i = 0; i < total_words.length; ++i) {
             //get the rating of the token from the content filter engine
-            let probs_output = await got.post(testing_url, { json: testing_params, headers: headers }).json();
+            let probs_output = await post(testing_url, { json: testing_params, headers: headers }).json();
             let output_label = probs_output.choices[0].text;
 
             //if the output label is 2 (meaning a risky output), we test it to confirm a high level of 
@@ -57,23 +58,17 @@ class ChatScraper {
                     let logprob_1 = logprobs || "1";
 
                     if ((logprob_0 != null) && (logprob_1 != null)) {
-                        if (logprob_0 >= logprob_1) {
-                            output_label = "0";
-                        } else {
-                            output_label = "1";
-                        }
-                    } else if (logprob_0 != null) {
-                        output_label = "0";
-                    } else if (logprob_1 != null) {
-                        output_label = "1";
-                    }
+                        if (logprob_0 >= logprob_1) output_label = "0";
+                        else output_label = "1";
+                        
+                    } else if (logprob_0 != null) output_label = "0";
+                    else if (logprob_1 != null) output_label = "1";
                 }
             }
 
             //if the output is not 0, 1, or 2, we set it as 2 for safety
-            if ((output_label != "0") && (output_label != "1") && (output_label != "2")) {
+            if ((output_label != "0") && (output_label != "1") && (output_label != "2")) 
                 output_label = "2";
-            }
 
             //if the token has been proven to not fall into a bad area/level of toxicity, 
             //we add it to the output text and send that out for approval for the bot's administrator
@@ -105,14 +100,11 @@ class ChatScraper {
 	#seeIfNothingButNewlines(response) {
 		let msg = response.split('');
 		msg.forEach(item => {
-			console.log(item);
-			if (item != '\n') {
-				return false;
-			}
+			if (item != '\n') return false;
 		});
 		return true;
     }
 
 }
-module.exports = ChatScraper;
+export default ChatScraper;
 

@@ -1,9 +1,12 @@
-require('dotenv').config({ path: './.env' });
-const { Client, Intents } = require('discord.js');
-const tmi = require('tmi.js');
-const fs = require('fs');
-const p = require('./post');
-const s = require('./scraper.js');
+import dotenv from 'dotenv';
+dotenv.config({ path: './.env'});
+
+import { Client, Intents } from 'discord.js';
+import { client } from 'tmi.js';
+import fs from 'fs';
+import { Post as p } from './post.js';
+import { ChatScraper as s} from './scraper.js';
+import { exit } from 'process';
 
 const discord_client = new Client({ intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES] });
 const token = process.env.DISCORD_CLIENT_TOKEN;
@@ -12,23 +15,25 @@ const token = process.env.DISCORD_CLIENT_TOKEN;
 let streamers = [];
 
 //the list of all channels; will hold each channel's prompt as to avoid prompts mixing together
-let channel_list = [];
+let channel_list = {};
 
 //read in list of channels from file and arrange them into array for use in options set
 fs.readFile('./channels.json', 'utf8', (err, data) => {
-	if (err) { console.error(err); }
+	if (err) console.error(err);
 	else {
 		let temp = JSON.parse(data);
-		temp.forEach(item => {
+		//get the list of channel names from the json file
+		let names = Object.keys(temp);
+		names.forEach(name => {
 			//frame for what will be stored in each element of the prompt-holding array
+			streamers.push(name);
 			let frame = {
-				channel: item.name,
-				approved_channel: item.approved_channel,
+				approved_channel: temp[name].approved_channel,
 				prompt: "",
-				linesCount: 0
+				lines_count: 0,
+				current_bill: temp[name].current_bill
             }
-			streamers.push(item.name);
-			channel_list.push(frame);
+			channel_list[name] = frame;
 		});
     }
 });
@@ -37,8 +42,8 @@ fs.readFile('./channels.json', 'utf8', (err, data) => {
 //set of options for the bot's IRC client when it boots on Twitch
 const opts = {
 	identity: {//name and password of the account
-		username: process.env.BOT_USERNAME,
-		password: process.env.BOT_PASSWORD
+		username: process.env.ACCT_USERNAME,
+		password: process.env.ACCT_PASSWRD
 	},
 	connection: {//whether or not the channel will need to reconnect automatically
 		reconnect: true
@@ -48,16 +53,14 @@ const opts = {
 };
 
 //lets us know that bot is connected to 
-discord_client.once('ready', () => {
-	console.log(`* Logged in as ${discord_client.user.tag} through Discord!`);
-});
+discord_client.once('ready', () => console.log(`* Logged in as ${discord_client.user.tag} through Discord!`));
 
-let twitch_client = new tmi.client(opts);
+let twitch_client = new client(opts);
 
 twitch_client.connect();
 
 twitch_client.on('message', onMessageHandler);
-twitch_client.on('connected', onConnectedHandler);
+twitch_client.on('connected', (addy, prt) => console.log(`* Connected to ${addy}:${prt} through Twitch`));
 
 let poster = new p(twitch_client, discord_client);
 let scraper = new s(discord_client);
@@ -67,23 +70,31 @@ discord_client.on('messageCreate', message => {
 	//take the message and split it up into separate words
 	const inputMsg = message.content.split(" ");
 	let response = "";
+	let filledFrames = poster.getFrameArray();
 	if (inputMsg[0] == '!send') {//the message generated was accepted by admin
-		let filledFrames = poster.getFrameArray();
 
 		//search through the list of responses and channels to find the correct one and then post that out
-		filledFrames.forEach(item => {
-			if (inputMsg[1] == item.channel) {
-				response = item.output;
-			}
-		});
-		if (response != "") {
-			twitch_client.say(inputMsg[1], `MrDestructoid ${response}`);
-		} else {
-			twitch_client.say(inputMsg[1], `No response found for this channel`);
+		if(filledFrames[inputMsg[1]] != undefined) {
+			response = filledFrames[inputMsg[1]].output;
+			channel_list[inputMsg[1]].current_bill += filledFrames[inputMsg[1]].curr_bill;
 		}
+		const target_channel = "#" + inputMsg[1]; 
+
+		if (response != "") 
+			twitch_client.say(target_channel, `MrDestructoid ${response}`);
+		else
+			twitch_client.say(target_channel, `No response found for this channel`);
+
+		poster.removeResponseFrame(inputMsg[1]);
+
+		writeChannelsToFile(JSON.stringify(channel_list, null, 4), 1);
+		
 	} else if (inputMsg[0] == '!reject') {//the message generated was rejected by admin
 
 		twitch_client.say(inputMsg[1], `Message rejected by bot administrator :(`);
+		channel_list[inputMsg[1]].current_bill += filledFrames[inputMsg[1]].curr_bill;
+		poster.removeResponseFrame(inputMsg[1]);
+		writeChannelsToFile(JSON.stringify(channel_list, null, 4), 1);
 
     } else if (inputMsg[0] == '!approvechannel') {//the admin has approved a channel for using this bot
 		let approved_channel = inputMsg[1];
@@ -95,12 +106,11 @@ discord_client.on('messageCreate', message => {
 	
 });
 
-function onConnectedHandler(addy, prt) {
-	console.log(`* Connected to ${addy}:${prt} through Twitch`);
-}
-
 function onMessageHandler(target, user, msg, self) {
-	if (self) { return; }
+
+	target = target.slice(1);
+
+	if (self) return; 
 
 	//split the message up into an array so we can see what's actually going on in it
 	const inputMsg = msg.split(" ");
@@ -110,38 +120,36 @@ function onMessageHandler(target, user, msg, self) {
 
 	//make sure we don't get the bot's own messages here, dont want a feedback loop
 	if (user.username != process.env.BOT_USERNAME) {
-		if (cmdName == '!post' && (user.mod || ('#' + user.username) == target)) {//generate a post from the prompt
+		if (cmdName == '!post' && (user.mod || (user.username) == target)) {//generate a post from the prompt
 
 			//check to see if the channel is approved or not. If so, allow a post to go through
 			//make sure that the prompt for the channel is cleared after response is generated as well
-			if (channel_list[findThisPrompt(target)].approved_channel) {
-				poster.generatePost(channel_list[findThisPrompt(target)]);
+			if (channel_list[target]['approved_channel'] != undefined) {
+				poster.generatePost(target, channel_list[target], process.env.OPENAI_API_KEY,
+				process.env.SERVER_ID);
 				flush(target);
 			}
 
 		} else if (cmdName == '!adduser' && user.username == "pope_pontus") {//add in new channel to client
 			
-			addInNewChannelToList(target, false);
+			addInNewChannelToList('#saint_isidore_bot', false);
 
-		} else if (cmdName == '!flush' && (user.mod || ('#' + user.username) == target)) {//flush the prompt for that specific channel
+		} else if (cmdName == '!flush' && (user.mod || (user.username) == target)) {//flush the prompt for that specific channel
 			
 			flush(target);
 
 		} else if (cmdName == '!testchat' && user.username == "pope_pontus") {//scrape the comments of the chat and get a score for how bad it may be
 
 			//make sure that there is enough comments from the channel to warrant the test going through
-			if (channel_list[findThisPrompt(target)].linesCount >= 100) {
-				scraper.analyzeChatHistory(channel_list[findThisPrompt(target)]);
-			} else {
+			if (channel_list[target]['lines_count'] >= 100) 
+				scraper.analyzeChatHistory(channel_listfindThisPrompt(target));
+			else 
 				twitch_client.say(target, "Still need more comments to analyze for approval");
-			}
-			
 
 		} else {//no applicable command, so we record the message into the appropriate prompt
 			
-			let i = findThisPrompt(target);
-			channel_list[i].prompt += combineInput(inputMsg, true) + '\n';
-			++channel_list[i].linesCount;
+			channel_list[target]['prompt'] += combineInput(inputMsg, true) + '\n';
+			++channel_list[target]['lines_count'];
 
         }
     }
@@ -159,13 +167,12 @@ function addInNewChannelToList(target, isApproved) {
 	for (let i = 0; i < opts.channels.length; ++i) {
 		let json_obj = {
 			"name": "",
-			"approved_channel": false
+			"approved_channel": false,
+			"current_bill": 0.0
 		};
 		json_obj.name = opts.channels[i];
 		//check to see if we need to have this go through approval first and foremost
-		if (isApproved) {
-			json_obj.approved_channel = true;
-		}
+		if (isApproved) json_obj.approved_channel = true;
 		data.push(json_obj);
     }
 
@@ -173,7 +180,7 @@ function addInNewChannelToList(target, isApproved) {
 	data = JSON.stringify(data, null, 4);
 
 	//rewrite the file with the new option set
-	writeChannelsToFile(data);
+	writeChannelsToFile(data, 0);
 }
 
 //removes a channel from the list of channels for the bot
@@ -182,44 +189,36 @@ function addInNewChannelToList(target, isApproved) {
 function removeChannelFromList(target) {
 	//first, find the channel in the arrays and remove it from the program altogether
 	let channels_index = opts.channels.indexOf(target);
-	let prompt_index = channel_list.indexOf(target);
+	let prompt_index = channel_list[target];
 
 	//make sure that the channel exists in both the opts and as a part of the channels list
-	if (channels_index > -1 && prompt_index > -1) {
+	if (channels_index > -1 && prompt_index != undefined) {
 		opts.channels.splice(channels_index, 1);
-		channel_list.splice(prompt_index, 1);
+		//if there is still a balance left over, grab the frame and store it into billing.json
+		if (channel_list[target].current_bill != 0) {
+			let removed_channel = {};
+			removed_channel[target] = channel_list[target].current_bill;
+			writeRemovedChannelBillsToFile(JSON.stringify(removed_channel, null, 4));
+		}
+		delete channel_list[target];
 	}
 
 	//rewrite the list of channels to file and restart the bot
 	let new_opts = JSON.stringify(opts.channels, null, 4);
-	writeChannelsToFile(new_opts);
+	writeChannelsToFile(new_opts, 0);
 }
 
 //flushes the prompt for the target channel (resets it back to "")
 //@params   target    The channel the command was called from
 function flush(target) {
-	let i = findThisPrompt(target);
-	channel_list[i].prompt = "";
+	channel_list[target]['prompt'] = "";
+	channel_list[target].lines_count = 0;
 	let msg = "";
-	if (i != -1) {
-		msg = `Prompt for @${target.slice(1)} has been successfully flushed!`;
-	} else {
+	if (channel_list[target] != undefined) 
+		msg = `Prompt for @${target} has been successfully flushed!`;
+	else 
 		msg = `Unknown channel. Cannot flush prompt`;
-	}
 	twitch_client.say(target, msg);
-}
-
-//gets the index of the channel prompt that needs to be swirlied out of existance
-//@param    target     The channel that the command was called from
-//@returns             Either the index of the channel in channel_list, or -1 if channel not found
-function findThisPrompt(target) {
-	let t = target.slice(1);
-	for (let i = 0; i < channel_list.length; ++i) {
-		if (channel_list[i].channel == t) {
-			return i;
-        }
-    }
-	return -1;
 }
 
 //combines the input into a single string
@@ -229,21 +228,17 @@ function findThisPrompt(target) {
 function combineInput(inputMsg, needWhiteSpace) {
 	let combinedMsg = '';
 	for (let i = 0; i < inputMsg.length; ++i) {
-		if (i != 0) {
-			combinedMsg += inputMsg[i];
-		} else if (inputMsg.length == 1) {
-			return inputMsg[i];
-        }
-		if (needWhiteSpace && (i + 1 != inputMsg.length)) {
-			combinedMsg += ' ';
-		}
+		combinedMsg += inputMsg[i];
+		if (inputMsg.length == 1) return inputMsg[i];
+		if (needWhiteSpace && (i + 1 != inputMsg.length)) combinedMsg += ' ';
 	}
 	return combinedMsg;
 }
 
 //writes the currently approved channels to file and restarts the client with the new list
-//@param   data   A stringified JSON object holding all the channels and their approved status
-function writeChannelsToFile(data) {
+//@param   data     A stringified JSON object holding all the channels and their approved status
+//@param   option   Number to specify if new user added to bot (0), updating current bill (1), or complete shutdown (2)
+function writeChannelsToFile(data, option) {
 	//rewrite the file with the new option set
 	fs.truncate('./channels.json', 0, function () {
 		fs.writeFile('./channels.json', data, 'utf8', function (err) {
@@ -252,19 +247,39 @@ function writeChannelsToFile(data) {
 				twitch_client.say(target, "Error adding in new channel to bot options");
 			} else {
 				try {
-					//disconnect the old client and remake it with the new opts
-					twitch_client.disconnect();
-					twitch_client = new tmi.client(opts);
-
-					//reconnect with new client and add on all handlers to it
-					twitch_client.connect();
-					twitch_client.on('message', onMessageHandler);
-					twitch_client.on('connected', onConnectedHandler);
-
-					twitch_client.say(target, "Added in this user to list of enabled channels").catch(console.error);
+					switch (option) {
+						case 0:
+							//disconnec client and reconnect with new client and add on all handlers to it
+							twitch_client.disconnect();
+							twitch_client = new client(opts);
+							twitch_client.connect();
+							twitch_client.on('message', onMessageHandler);
+							twitch_client.on('connected', (addy, prt) => console.log(`* Connected to ${addy}:${prt} through Twitch`));
+							break;
+						case 1:
+							console.log("* Billing totals for all users updated");
+							break;
+						case 2:
+							//disconnect from all channels and shutdown bot completely
+							twitch_client.disconnect();
+							exit(0);
+					}
 				} catch (err) { console.error(err); }
 			}
 		})
+	});
+}
+
+function writeRemovedChannelBillsToFile(data) {
+	fs.appendFile('./channels.json', data, (err) => {
+		if (err) {
+			console.error(err);
+			//change below when possible, need to figure out how to do dump files and such
+			console.log("WRITE THIS DOWN FOR SAFE KEEPING");
+			console.log(data);
+		} else {
+			console.log("Bill written successfully");
+		}
 	});
 }
 

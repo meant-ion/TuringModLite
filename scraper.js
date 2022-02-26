@@ -13,15 +13,15 @@ export class ChatScraper {
     //@params d_c Discord client
     constructor(d_c) {
         this.discord_client = d_c;
-        this.scraped_chat_history = "";
     }
 
     //@param channel_messages The combined messages of the chat room in one single prompt; what we will be using to test for approval
     //@return                 A confidence value of the chatroom being safe to use the bot on
     async analyzeChatHistory(channel_messages) {
-        this.scraped_chat_history = channel_messages.prompt;
 
-        let total_words = this.scraped_chat_history.split(" ");
+        let total_words = channel_messages.split(" ");
+
+        const testing_url = 'https://api.openai.com/v1/engines/content-filter-alpha-c4/completions';
 
         //the headers, which is effectively the API key for GPT-3 to be sent for model access
         const headers = {
@@ -42,11 +42,23 @@ export class ChatScraper {
         let total_bad_items = 0;
         let bad_items_list = [];
 
+        const toxic_threshold = -0.355;//probability that a "2" is real or discarded as false pos
+
         //loop through each token and see if we can include it in the final output
         for (let i = 0; i < total_words.length; ++i) {
             //get the rating of the token from the content filter engine
-            let probs_output = await post(testing_url, { json: testing_params, headers: headers }).json();
-            let output_label = probs_output.choices[0].text;
+            let probs_output = "";
+            let output_label = undefined;
+            await fetch(testing_url,  { method: 'POST', headers: headers, body: JSON.stringify(testing_params) })
+                .then(result => result.json())
+                .then(body => {
+                    probs_output = body;
+                    output_label = body.choices[0].text;
+                }).catch(err => {
+                    console.log("Error in getting suitability rating for this channel");
+                    console.error(err);
+                    return false;
+                });
 
             //if the output label is 2 (meaning a risky output), we test it to confirm a high level of 
             //confidence in the rating and substitute the token as needed
@@ -91,18 +103,8 @@ export class ChatScraper {
         //send out the stats gained from this scraping and send out query to apply bot to channel 
         this.discord_client.channels.cache.get(process.env.SERVER_ID).send(response_msg);
         this.discord_client.channels.cache.get(process.env.SERVER_ID).send(list_msg);
-        this.discord_client.channels.cache.get(process.env.SERVER_ID).send(bad_items_list);
         this.discord_client.channels.cache.get(process.env.SERVER_ID).send(askMsg);
-    }
-
-    //checks to see if there are nothing but newline characters in the text.
-	//@returns true or false depending on whether or not the message is made up entirely of '\n'
-	#seeIfNothingButNewlines(response) {
-		let msg = response.split('');
-		msg.forEach(item => {
-			if (item != '\n') return false;
-		});
-		return true;
+        return true;
     }
 
 }

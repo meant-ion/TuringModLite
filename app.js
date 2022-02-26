@@ -146,8 +146,8 @@ function onMessageHandler(target, user, msg, self) {
 		} else if (cmdName == '!testchat' && user.username == "pope_pontus") {//scrape the comments of the chat and get a score for how bad it may be
 
 			//make sure that there is enough comments from the channel to warrant the test going through
-			if (channel_list[target]['lines_count'] >= 100) 
-				scraper.analyzeChatHistory(channel_listfindThisPrompt(target));
+			if (channel_list[target]['lines_count'] >= 10) 
+				scraper.analyzeChatHistory(channel_list[target].prompt);
 			else 
 				twitch_client.say(target, "Still need more comments to analyze for approval");
 

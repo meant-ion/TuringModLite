@@ -110,7 +110,7 @@ export class Post {
 						probs_output = body;
 						output_label = body.choices[0].text;
 					}).catch(err => {
-						this.twitch_client.say(target, `Error in text generation`);
+						this.twitch_client.say(target, `Error in text filtering`);
 						console.error(err);
 						return false;
 					});
